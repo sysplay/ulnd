@@ -298,8 +298,6 @@ int rx_pkt(const char *iface, unsigned char *pkt, int len)
 {
 	int fd, iface_index;
 	struct sockaddr_ll my_addr;
-	int my_addr_len;
-	int ret;
 
 	if ((fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
 	{
@@ -308,18 +306,25 @@ int rx_pkt(const char *iface, unsigned char *pkt, int len)
 	}
 	memset(&my_addr, 0, sizeof(my_addr));
 	my_addr.sll_family = AF_PACKET; // Always
+	my_addr.sll_protocol = htons(ETH_P_ALL);
 	if (get_if_index(iface, &iface_index) == -1)
 	{
 		close(fd);
 		return -1;
 	}
 	my_addr.sll_ifindex = iface_index;
-	my_addr_len = sizeof(my_addr);
-	if ((ret = recvfrom(fd, pkt, len, 0, (struct sockaddr *)(&my_addr), &my_addr_len)) == -1)
+	if (bind(fd, (struct sockaddr *)(&my_addr), sizeof(my_addr)) == -1)
+	{
+		perror("bind");
+		close(fd);
+		return -1;
+	}
+	if (recv(fd, pkt, len, 0) == -1)
 	{
 		perror("recv");
+		close(fd);
+		return -1;
 	}
-	close(fd);
 
-	return ret;
+	return 0;
 }
