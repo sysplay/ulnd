@@ -1,11 +1,15 @@
 #include <linux/module.h>
 #include <linux/errno.h>
 
-#include <linux/etherdevice.h>
-#include <linux/netdevice.h>
+#include <linux/etherdevice.h> // struct alloc_etherdev
+#include <linux/netdevice.h> // struct net_device, ...
 
 #define DRV_PREFIX "fnd"
-#include "net_drv.h"
+#include "common.h"
+
+typedef struct _DrvPvt
+{
+} DrvPvt;
 
 static struct net_device *ndev;
 static const struct net_device_ops fnd_netdev_ops;
