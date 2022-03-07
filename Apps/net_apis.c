@@ -271,7 +271,7 @@ int tx_pkt(const char *iface, const unsigned char *pkt, int len)
 {
 	int fd, iface_index;
 	struct sockaddr_ll my_addr;
-	int ret;
+	int bytes;
 
 	if ((fd = socket(AF_PACKET, SOCK_RAW, 0)) == -1)
 	{
@@ -286,18 +286,19 @@ int tx_pkt(const char *iface, const unsigned char *pkt, int len)
 		return -1;
 	}
 	my_addr.sll_ifindex = iface_index;
-	if ((ret = sendto(fd, pkt, len, 0, (struct sockaddr *)(&my_addr), sizeof(my_addr))) == -1)
+	if ((bytes = sendto(fd, pkt, len, 0, (struct sockaddr *)(&my_addr), sizeof(my_addr))) == -1)
 	{
 		perror("send");
 	}
 	close(fd);
 
-	return ret;
+	return bytes;
 }
 int rx_pkt(const char *iface, unsigned char *pkt, int len)
 {
 	int fd, iface_index;
 	struct sockaddr_ll my_addr;
+	int bytes;
 
 	if ((fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1)
 	{
@@ -319,12 +320,11 @@ int rx_pkt(const char *iface, unsigned char *pkt, int len)
 		close(fd);
 		return -1;
 	}
-	if (recv(fd, pkt, len, 0) == -1)
+	if ((bytes = recv(fd, pkt, len, 0)) == -1)
 	{
 		perror("recv");
-		close(fd);
-		return -1;
 	}
+	close(fd);
 
-	return 0;
+	return bytes;
 }

@@ -44,7 +44,7 @@ int enable_ipv6(const char *iface, int yes)
 	}
 	return 0;
 }
-void prepare_pkt(unsigned char *pkt, int len)
+int prepare_pkt(unsigned char *pkt, int len)
 {
 	unsigned int parsed_hdr_size;
 	struct ethhdr *eh;
@@ -70,6 +70,7 @@ void prepare_pkt(unsigned char *pkt, int len)
 	{
 		pkt[i] = i;
 	}
+	return len;
 }
 void parse_pkt(const unsigned char *pkt, int len)
 {
@@ -83,6 +84,11 @@ void parse_pkt(const unsigned char *pkt, int len)
 
 	parsed_hdr_size = 0;
 	eh = (struct ethhdr *)(pkt + parsed_hdr_size);
+	if (len < (parsed_hdr_size + sizeof(struct ethhdr)))
+	{
+		printf("Incomplete Packet. Aborting ... \n");
+		return;
+	}
 	printf("Dst MAC: %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX\n",
 		eh->h_dest[0], eh->h_dest[1], eh->h_dest[2], eh->h_dest[3], eh->h_dest[4], eh->h_dest[5]);
 	printf("Src MAC: %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX\n",
@@ -97,6 +103,11 @@ void parse_pkt(const unsigned char *pkt, int len)
 	}
 	parsed_hdr_size += sizeof(struct ethhdr);
 	ih = (struct iphdr *)(pkt + parsed_hdr_size);
+	if (len < (parsed_hdr_size + sizeof(struct iphdr)))
+	{
+		printf("Incomplete Packet. Aborting ... \n");
+		return;
+	}
 	printf("IP Version: %u, Hdr Len: %u, ToS: 0x%02hhX, Total Length: %hu\n",
 		ih->version, ih->ihl, ih->tos, ntohs(ih->tot_len));
 	printf("ID: 0x%04hX, Fragment Offset: %hu\n", ntohs(ih->id), ntohs(ih->frag_off));
@@ -110,6 +121,11 @@ void parse_pkt(const unsigned char *pkt, int len)
 	if (ih->protocol == IPPROTO_UDP)
 	{
 		uh = (struct udphdr *)(pkt + parsed_hdr_size);
+		if (len < (parsed_hdr_size + sizeof(struct udphdr)))
+		{
+			printf("Incomplete Packet. Aborting ... \n");
+			return;
+		}
 		printf("UDP Src Port: %hu, Dst Port: %hu, Hdr + Data Len: %hu, Chksum: 0x%04X\n",
 			ntohs(uh->source), ntohs(uh->dest), ntohs(uh->len), ntohs(uh->check));
 		parsed_hdr_size += sizeof(struct udphdr);
@@ -117,6 +133,11 @@ void parse_pkt(const unsigned char *pkt, int len)
 	else if (ih->protocol == IPPROTO_TCP)
 	{
 		th = (struct tcphdr *)(pkt + parsed_hdr_size);
+		if (len < (parsed_hdr_size + sizeof(struct tcphdr)))
+		{
+			printf("Incomplete Packet. Aborting ... \n");
+			return;
+		}
 		printf("TCP Src Port: %hu, Dst Port: %hu, Window: %hu, Chksum: 0x%04hX\n",
 			ntohs(th->source), ntohs(th->dest), ntohs(th->window), ntohs(th->check));
 		printf("Seq: %u, Ack Seq: %u\n", ntohl(th->seq), ntohl(th->ack_seq));
@@ -127,10 +148,12 @@ void parse_pkt(const unsigned char *pkt, int len)
 		printf("Non-UDT/TCP Hdr follows. Skipping ...\n");
 		return;
 	}
+	printf("Payload (%d bytes):", len - parsed_hdr_size);
 	for (i = parsed_hdr_size; i < len; i++)
 	{
-		//printf("%02hhX(% 3d) ", pkt[i], pkt[i]);
+		printf(" %02hhX", pkt[i]);
 	}
+	printf("\n");
 }
 void dump_pkt(const unsigned char *pkt, int len)
 {
@@ -146,7 +169,7 @@ int main(int argc, char *argv[])
 	char iface[IFNAMSIZ], iface_new[IFNAMSIZ];
 	unsigned char mac_addr[18], ip_addr[16], ip_mask[16];
 	unsigned char pkt[MTU];
-	int len = MTU, rx_len;
+	int len, tx_len, rx_len;
 
 	if (argc != 2)
 	{
@@ -255,16 +278,17 @@ int main(int argc, char *argv[])
 				}
 				break;
 			case 9:
-				prepare_pkt(pkt, len);
-				if (tx_pkt(iface, pkt, len) == len)
+				len = 100;
+				len = prepare_pkt(pkt, len);
+				if ((tx_len = tx_pkt(iface, pkt, len)) != -1)
 				{
-					printf("Transmitted packet through %s\n", iface);
+					printf("Transmitted %d/%d bytes of packet through %s\n", tx_len, len, iface);
 				}
 				break;
 			case 10:
-				if ((rx_len = rx_pkt(iface, pkt, len)) != -1)
+				if ((rx_len = rx_pkt(iface, pkt, MTU)) != -1)
 				{
-					printf("Received packet through %s\n", iface);
+					printf("Received %d bytes of packet through %s\n", rx_len, iface);
 					parse_pkt(pkt, rx_len);
 					//dump_pkt(pkt, rx_len);
 				}
