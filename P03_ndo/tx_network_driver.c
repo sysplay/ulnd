@@ -199,9 +199,11 @@ static int tnd_init(void)
 }
 static void tnd_exit(void)
 {
+	struct net_device *dev = ndev;
+
 	iprintk("exit\n");
-	unregister_netdev(ndev);
-	free_netdev(ndev);
+	unregister_netdev(dev);
+	free_netdev(dev);
 }
 
 module_init(tnd_init);
@@ -209,4 +211,4 @@ module_exit(tnd_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Anil Kumar Pugalia <anil@sysplay.in>");
-MODULE_DESCRIPTION("Packeted Network Device Driver");
+MODULE_DESCRIPTION("Transmit Network Device Driver");

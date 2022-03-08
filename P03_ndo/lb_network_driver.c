@@ -14,6 +14,8 @@
 #define DRV_PREFIX "lnd"
 #include "common.h"
 
+#define LND_NAPI_WEIGHT 64
+
 typedef struct _DrvPvt
 {
 	struct net_device *ndev;
@@ -21,8 +23,6 @@ typedef struct _DrvPvt
 	struct sk_buff *skb;
 	struct napi_struct napi;
 } DrvPvt;
-
-#define LND_NAPI_WEIGHT 64
 
 static struct net_device *ndev;
 
@@ -253,9 +253,13 @@ static int lnd_init(void)
 }
 static void lnd_exit(void)
 {
+	struct net_device *dev = ndev;
+	DrvPvt *pvt = netdev_priv(dev);
+
 	iprintk("exit\n");
-	unregister_netdev(ndev);
-	free_netdev(ndev);
+	unregister_netdev(dev);
+	netif_napi_del(&pvt->napi);
+	free_netdev(dev);
 }
 
 module_init(lnd_init);
@@ -263,4 +267,4 @@ module_exit(lnd_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Anil Kumar Pugalia <anil@sysplay.in>");
-MODULE_DESCRIPTION("Packeted Network Device Driver");
+MODULE_DESCRIPTION("Loopback Network Device Driver");
