@@ -11,7 +11,7 @@
 #include <linux/byteorder/generic.h> // ntoh...
 #include <linux/spinlock.h> // spinlock_t, ...
 
-#define DRV_PREFIX "pnd"
+#define DRV_PREFIX "lnd"
 #include "common.h"
 
 typedef struct _DrvPvt
@@ -22,7 +22,7 @@ typedef struct _DrvPvt
 	struct napi_struct napi;
 } DrvPvt;
 
-#define PND_NAPI_WEIGHT 64
+#define LND_NAPI_WEIGHT 64
 
 static struct net_device *ndev;
 
@@ -112,7 +112,7 @@ static void display_packet(struct sk_buff *skb)
 	}
 }
 
-static int pnd_open(struct net_device *dev)
+static int lnd_open(struct net_device *dev)
 {
 	DrvPvt *pvt = netdev_priv(dev);
 
@@ -120,7 +120,7 @@ static int pnd_open(struct net_device *dev)
 	napi_enable(&pvt->napi);
 	return 0;
 }
-static int pnd_close(struct net_device *dev)
+static int lnd_close(struct net_device *dev)
 {
 	DrvPvt *pvt = netdev_priv(dev);
 	unsigned long flags;
@@ -135,7 +135,7 @@ static int pnd_close(struct net_device *dev)
 	memset(&dev->stats, 0, sizeof(dev->stats));
 	return 0;
 }
-static int pnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static int lnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	DrvPvt *pvt = netdev_priv(dev);
 	unsigned long flags;
@@ -156,21 +156,21 @@ static int pnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	return 0;
 }
-static int pnd_set_mac_address(struct net_device *dev, void *addr)
+static int lnd_set_mac_address(struct net_device *dev, void *addr)
 {
 	iprintk("set_mac\n");
 	return eth_mac_addr(dev, addr);
 }
 
-static const struct net_device_ops pnd_netdev_ops =
+static const struct net_device_ops lnd_netdev_ops =
 {
-	.ndo_open = pnd_open,
-	.ndo_stop = pnd_close,
-	.ndo_start_xmit = pnd_start_xmit,
-	.ndo_set_mac_address = pnd_set_mac_address,
+	.ndo_open = lnd_open,
+	.ndo_stop = lnd_close,
+	.ndo_start_xmit = lnd_start_xmit,
+	.ndo_set_mac_address = lnd_set_mac_address,
 };
 
-static int pnd_poll(struct napi_struct *napi_ptr, int budget)
+static int lnd_poll(struct napi_struct *napi_ptr, int budget)
 {
 	DrvPvt *pvt = container_of(napi_ptr, DrvPvt, napi);
 	struct net_device *dev = pvt->ndev;
@@ -214,7 +214,7 @@ static int pnd_poll(struct napi_struct *napi_ptr, int budget)
 	return work_done;
 }
 
-static int pnd_init(void)
+static int lnd_init(void)
 {
 	struct net_device *dev;
 	DrvPvt *pvt;
@@ -230,10 +230,10 @@ static int pnd_init(void)
 	}
 	pvt = netdev_priv(dev);
 	pvt->ndev = dev;
-	dev->netdev_ops = &pnd_netdev_ops;
+	dev->netdev_ops = &lnd_netdev_ops;
 	spin_lock_init(&pvt->lock);
 	pvt->skb = NULL;
-	netif_napi_add(dev, &pvt->napi, pnd_poll, PND_NAPI_WEIGHT);
+	netif_napi_add(dev, &pvt->napi, lnd_poll, LND_NAPI_WEIGHT);
 	// Setting up some MAC Addr - 00:01:02:03:04:05 to be specific
 	for (i = 0; i < dev->addr_len; i++)
 	{
@@ -251,15 +251,15 @@ static int pnd_init(void)
 	}
 	return ret;
 }
-static void pnd_exit(void)
+static void lnd_exit(void)
 {
 	iprintk("exit\n");
 	unregister_netdev(ndev);
 	free_netdev(ndev);
 }
 
-module_init(pnd_init);
-module_exit(pnd_exit);
+module_init(lnd_init);
+module_exit(lnd_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Anil Kumar Pugalia <anil@sysplay.in>");
