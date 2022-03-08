@@ -56,6 +56,11 @@ int prepare_pkt(unsigned char *pkt, int len)
 
 	parsed_hdr_size = 0;
 	eh = (struct ethhdr *)(pkt + parsed_hdr_size);
+	if (len < (parsed_hdr_size + sizeof(struct ethhdr)))
+	{
+		printf("Insufficient Packet Length. Aborting ... \n");
+		return parsed_hdr_size;
+	}
 	eh->h_dest[0] = eh->h_dest[1] = eh->h_dest[2] = eh->h_dest[3] = eh->h_dest[4] = eh->h_dest[5] = 0x5A;
 	eh->h_source[0] = 0x00;
 	eh->h_source[1] = 0x01;
@@ -63,7 +68,6 @@ int prepare_pkt(unsigned char *pkt, int len)
 	eh->h_source[3] = 0x03;
 	eh->h_source[4] = 0x04;
 	eh->h_source[5] = 0x05;
-	/* TODO 1: Prepare an IP Packet for transmission */
 	eh->h_proto = 0;
 	parsed_hdr_size += sizeof(struct ethhdr);
 	for (i = parsed_hdr_size; i < len; i++)
@@ -252,7 +256,7 @@ int main(int argc, char *argv[])
 			case 6:
 				printf("Enter I/F State (0 for DOWN, 1 for UP): ");
 				scanf("%d", &iface_up);
-				// TODO: Comment the first, and uncomment the 2nd & 3rd lines to play w/ promiscuous mode
+				// TODO 1: Comment the first, and uncomment the 2nd & 3rd lines to play w/ promiscuous mode
 				iface_promisc = 0;
 				//printf("Enter I/F Mode (0 for NORMAL, 1 for PROMISCUOUS): ");
 				//scanf("%d", &iface_promisc);
