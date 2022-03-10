@@ -124,6 +124,7 @@ static int tnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	display_packet(skb);
 	// TODO 4: Uncomment the following to see the statistics effect
 	//dev->stats.tx_dropped++;
+	dev_kfree_skb(skb); // As we are not using it any further
 	return 0;
 }
 static void tnd_change_rx_flags(struct net_device *dev, int flags)

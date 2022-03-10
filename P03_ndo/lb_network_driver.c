@@ -147,6 +147,8 @@ static int lnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (pvt->skb) // Loopback Hack: Previous pkt not yet transmitted. Drop it :)
 	{
 		dev->stats.tx_dropped++;
+		dev_kfree_skb(pvt->skb);
+		pvt->skb = NULL;
 	}
 
 	// Loopback Hack: Store & Trigger poll for pkt received
