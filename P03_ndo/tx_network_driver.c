@@ -96,7 +96,7 @@ static void display_packet(struct sk_buff *skb)
 	}
 	else
 	{
-		iprintk("Non-UDT/TCP Hdr follows. Skipping ...\n");
+		iprintk("Non-UDP/TCP Hdr follows. Skipping ...\n");
 		return;
 	}
 	iprintk("Payload is %d bytes\n", len - parsed_hdr_size);
@@ -194,7 +194,6 @@ static int tnd_init(void)
 	else
 	{
 		ndev = dev; // Hack using global variable in absence of a horizontal layer
-		iprintk("network interface registered successfully\n");
 	}
 	return ret;
 }

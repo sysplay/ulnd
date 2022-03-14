@@ -215,7 +215,7 @@ int set_if_state(const char *iface, const int *up, const int *promisc)
 	}
 	if (ioctl(fd, 0 /* TODO 8: Fill in the correct command */, &ifr) == -1)
 	{
-		perror("ioctl get i/f state");
+		perror("ioctl set i/f state");
 		close(fd);
 		return -1;
 	}

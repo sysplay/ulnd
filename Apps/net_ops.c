@@ -149,7 +149,7 @@ void parse_pkt(const unsigned char *pkt, int len)
 	}
 	else
 	{
-		printf("Non-UDT/TCP Hdr follows. Skipping ...\n");
+		printf("Non-UDP/TCP Hdr follows. Skipping ...\n");
 		return;
 	}
 	printf("Payload (%d bytes):", len - parsed_hdr_size);

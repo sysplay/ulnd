@@ -9,18 +9,17 @@
 #include <linux/udp.h> // struct udphdr, UDP definitions
 #include <linux/tcp.h> // struct tcphdr, TCP definitions
 #include <linux/byteorder/generic.h> // ntoh...
-#include <linux/spinlock.h> // spinlock_t, ...
 
-#define DRV_PREFIX "lnd"
+#define DRV_PREFIX "pnd"
 #include "common.h"
 
-#define LND_NAPI_WEIGHT 64
+#include "nic.h"
+
+#define PND_NAPI_WEIGHT 64
 
 typedef struct _DrvPvt
 {
 	struct net_device *ndev;
-	spinlock_t lock; // Protect the skb ptr
-	struct sk_buff *skb;
 	struct napi_struct napi;
 } DrvPvt;
 
@@ -112,114 +111,96 @@ static void display_packet(struct sk_buff *skb)
 	}
 }
 
-static int lnd_open(struct net_device *dev)
+static void handler(void *handler_param)
+{
+	DrvPvt *pvt = (DrvPvt *)(handler_param);
+
+	nic_hw_disable_intr();
+	napi_schedule(&pvt->napi);
+}
+
+static int pnd_open(struct net_device *dev)
 {
 	DrvPvt *pvt = netdev_priv(dev);
 
 	iprintk("open\n");
+	nic_setup_buffers();
 	napi_enable(&pvt->napi);
+	nic_register_handler(handler, pvt);
+	nic_hw_init();
 	return 0;
 }
-static int lnd_close(struct net_device *dev)
+static int pnd_close(struct net_device *dev)
 {
 	DrvPvt *pvt = netdev_priv(dev);
-	unsigned long flags;
 
 	iprintk("close\n");
+	nic_hw_shut();
+	nic_unregister_handler();
 	napi_disable(&pvt->napi);
-	// Clear the pkts, if any
-	spin_lock_irqsave(&pvt->lock, flags);
-	pvt->skb = NULL;
-	spin_unlock_irqrestore(&pvt->lock, flags);
+	nic_cleanup_buffers(); // In turn, also clears the pkts, if any
 	// Clear the stats
 	memset(&dev->stats, 0, sizeof(dev->stats));
 	return 0;
 }
-static int lnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static int pnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
-	DrvPvt *pvt = netdev_priv(dev);
-	unsigned long flags;
+	int len;
 
 	iprintk("tx\n");
 	display_packet(skb);
-
-	spin_lock_irqsave(&pvt->lock, flags);
-	if (pvt->skb) // Loopback Hack: Previous pkt not yet transmitted. Drop it :)
+	len = skb->len; // HACK: To avoid using skb after packet transmission
+	if (nic_hw_tx_pkt(skb)) // Buffer Full & hence dropped
 	{
 		dev->stats.tx_dropped++;
-		dev_kfree_skb(pvt->skb);
-		pvt->skb = NULL;
+		dev_kfree_skb(skb);
 	}
-
-	// Loopback Hack: Store for pkt received
-	pvt->skb = skb;
-	spin_unlock_irqrestore(&pvt->lock, flags);
-
-	// Loopback Hack: Trigger poll for pkt received
-	//napi_schedule(&pvt->napi); // TODO
-
+	else
+	{
+		dev->stats.tx_packets++;
+		dev->stats.tx_bytes += len;
+	}
 	return 0;
 }
-static int lnd_set_mac_address(struct net_device *dev, void *addr)
+static int pnd_set_mac_address(struct net_device *dev, void *addr)
 {
 	iprintk("set_mac\n");
 	return eth_mac_addr(dev, addr);
 }
 
-static const struct net_device_ops lnd_netdev_ops =
+static const struct net_device_ops pnd_netdev_ops =
 {
-	.ndo_open = lnd_open,
-	.ndo_stop = lnd_close,
-	.ndo_start_xmit = lnd_start_xmit,
-	.ndo_set_mac_address = lnd_set_mac_address,
+	.ndo_open = pnd_open,
+	.ndo_stop = pnd_close,
+	.ndo_start_xmit = pnd_start_xmit,
+	.ndo_set_mac_address = pnd_set_mac_address,
 };
 
-static int lnd_poll(struct napi_struct *napi_ptr, int budget)
+static int pnd_poll(struct napi_struct *napi_ptr, int budget)
 {
 	DrvPvt *pvt = container_of(napi_ptr, DrvPvt, napi);
 	struct net_device *dev = pvt->ndev;
-	unsigned long flags;
-	struct sk_buff *skb;
-	int pkt_size;
 	unsigned int work_done;
+	struct sk_buff *skb;
 
 	iprintk("poll\n");
-	spin_lock_irqsave(&pvt->lock, flags);
-	skb = pvt->skb;
-	pvt->skb = NULL;
-	spin_unlock_irqrestore(&pvt->lock, flags);
-
-	if (!skb) // Should not happen
+	work_done = 0;
+	while ((work_done < budget) && (skb = nic_hw_rx_pkt()))
 	{
-		dev->stats.tx_errors++; // Loopback Hack: Update for pkt transmission error
-		dev->stats.rx_errors++;
-	}
-	else
-	{
-		// Loopback Hack: Update for pkt transmission complete
-		dev->stats.tx_packets++;
-		dev->stats.tx_bytes += skb->len;
-
-		// Loopback Hack: Get size of the received pkt
-		pkt_size = skb->len;
-
+		display_packet(skb);
 		dev->stats.rx_packets++;
-		dev->stats.rx_bytes += pkt_size;
-		//skb_put(skb, pkt_size); // Loopback Hack: Not to be done here as it is already set
-		//skb->protocol = eth_type_trans(skb, dev); // Loopback Hack: Not needed here as it is already set
-		//napi_gro_receive(&pvt->napi, skb); // TODO: Handover to the network stack
+		dev->stats.rx_bytes += skb->len;
+		napi_gro_receive(&pvt->napi, skb); // Handover to the network stack
+		work_done++;
 	}
-
-	work_done = 1; // Always as currently max support of one packet only
-	if (work_done < budget)
-	{
+	if (work_done < budget) {
 		napi_complete(napi_ptr);
+		nic_hw_enable_intr();
 	}
-
 	return work_done;
 }
 
-static int lnd_init(void)
+static int pnd_init(void)
 {
 	struct net_device *dev;
 	DrvPvt *pvt;
@@ -235,10 +216,8 @@ static int lnd_init(void)
 	}
 	pvt = netdev_priv(dev);
 	pvt->ndev = dev;
-	dev->netdev_ops = &lnd_netdev_ops;
-	spin_lock_init(&pvt->lock);
-	pvt->skb = NULL;
-	netif_napi_add(dev, &pvt->napi, lnd_poll, LND_NAPI_WEIGHT);
+	dev->netdev_ops = &pnd_netdev_ops;
+	netif_napi_add(dev, &pvt->napi, pnd_poll, PND_NAPI_WEIGHT);
 	// Setting up some MAC Addr - 00:01:02:03:04:05 to be specific
 	for (i = 0; i < dev->addr_len; i++)
 	{
@@ -255,7 +234,7 @@ static int lnd_init(void)
 	}
 	return ret;
 }
-static void lnd_exit(void)
+static void pnd_exit(void)
 {
 	struct net_device *dev = ndev;
 	DrvPvt *pvt = netdev_priv(dev);
@@ -266,9 +245,9 @@ static void lnd_exit(void)
 	free_netdev(dev);
 }
 
-module_init(lnd_init);
-module_exit(lnd_exit);
+module_init(pnd_init);
+module_exit(pnd_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Anil Kumar Pugalia <anil@sysplay.in>");
-MODULE_DESCRIPTION("Loopback Network Device Driver");
+MODULE_DESCRIPTION("Packeted Network Device Driver");
