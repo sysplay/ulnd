@@ -1,6 +1,6 @@
 #!/bin/bash
 
-IFNAME=eth0
+IFNAME=ethX
 
 if [ "$1" != "down" ]
 then
