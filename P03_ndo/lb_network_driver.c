@@ -24,7 +24,7 @@ typedef struct _DrvPvt
 	struct napi_struct napi;
 } DrvPvt;
 
-static struct net_device *ndev;
+static DrvPvt *npvt;
 
 static void display_packet(struct sk_buff *skb)
 {
@@ -235,7 +235,6 @@ static int lnd_init(void)
 	}
 	pvt = netdev_priv(dev);
 	pvt->ndev = dev;
-	dev->netdev_ops = &lnd_netdev_ops;
 	spin_lock_init(&pvt->lock);
 	pvt->skb = NULL;
 	netif_napi_add(dev, &pvt->napi, lnd_poll, LND_NAPI_WEIGHT);
@@ -244,6 +243,7 @@ static int lnd_init(void)
 	{
 		dev->dev_addr[i] = i;
 	}
+	dev->netdev_ops = &lnd_netdev_ops;
 	if ((ret = register_netdev(dev)))
 	{
 		eprintk("%s network interface registration failed w/ error %i\n", dev->name, ret);
@@ -251,14 +251,14 @@ static int lnd_init(void)
 	}
 	else
 	{
-		ndev = dev; // Hack using global variable in absence of a horizontal layer
+		npvt = pvt; // Hack using global variable in absence of a horizontal layer
 	}
 	return ret;
 }
 static void lnd_exit(void)
 {
-	struct net_device *dev = ndev;
-	DrvPvt *pvt = netdev_priv(dev);
+	DrvPvt *pvt = npvt;
+	struct net_device *dev = pvt->ndev;
 
 	iprintk("exit\n");
 	unregister_netdev(dev);

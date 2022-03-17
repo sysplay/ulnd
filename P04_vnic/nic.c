@@ -63,7 +63,7 @@ typedef struct _DrvPvt
 	int nic_intr_enabled; // NIC level interrupt is enabled or not
 } DrvPvt;
 
-static struct net_device *ndev;
+static DrvPvt *npvt;
 
 static void display_packet(struct sk_buff *skb)
 {
@@ -272,10 +272,10 @@ static int nic_init(void)
 	}
 	pvt = netdev_priv(dev);
 	pvt->ndev = dev;
-	dev->netdev_ops = &nic_netdev_ops;
 	netif_napi_add(dev, &pvt->napi, nic_poll, NIC_NAPI_WEIGHT);
 	// Setting up some MAC Addr - 00:56:4E:49:43:53 to be specific
 	memcpy(dev->dev_addr, "\0VNICS", 6); // Virtual NIC Simulation
+	dev->netdev_ops = &nic_netdev_ops;
 	if ((ret = register_netdev(dev)))
 	{
 		eprintk("%s network interface registration failed w/ error %i\n", dev->name, ret);
@@ -283,7 +283,7 @@ static int nic_init(void)
 	}
 	else
 	{
-		ndev = dev; // Hack using global variable in absence of a horizontal layer
+		npvt = pvt; // Hack using global variable in absence of a horizontal layer
 	}
 
 	/* Following are the NIC Simulation related initializations */
@@ -294,8 +294,8 @@ static int nic_init(void)
 }
 static void nic_exit(void)
 {
-	struct net_device *dev = ndev;
-	DrvPvt *pvt = netdev_priv(dev);
+	DrvPvt *pvt = npvt;
+	struct net_device *dev = pvt->ndev;
 
 	iprintk("exit\n");
 
@@ -313,7 +313,7 @@ module_exit(nic_exit);
 /* Following are the NIC Simulation related functions */
 void nic_setup_buffers(void)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 	unsigned long flags;
 	int i;
 
@@ -332,7 +332,7 @@ void nic_setup_buffers(void)
 }
 void nic_cleanup_buffers(void) // Free all non-processed skbs
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 	unsigned long flags;
 	int pkts_left;
 
@@ -357,7 +357,7 @@ void nic_cleanup_buffers(void) // Free all non-processed skbs
 }
 void nic_register_handler(Handler handler, void *handler_param)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 	unsigned long flags;
 
 	spin_lock_irqsave(&pvt->lock, flags);
@@ -367,7 +367,7 @@ void nic_register_handler(Handler handler, void *handler_param)
 }
 void nic_unregister_handler(void)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 	unsigned long flags;
 
 	spin_lock_irqsave(&pvt->lock, flags);
@@ -378,7 +378,7 @@ void nic_unregister_handler(void)
 
 void nic_hw_enable_intr(void)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 	//unsigned long flags;
 
 	pvt->nic_intr_enabled = 1;
@@ -394,20 +394,20 @@ void nic_hw_enable_intr(void)
 }
 void nic_hw_disable_intr(void)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 
 	pvt->nic_intr_enabled = 0;
 }
 void nic_hw_init(void)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 
 	pvt->nic_ready = 1;
 	nic_hw_enable_intr();
 }
 void nic_hw_shut(void)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 
 	nic_hw_disable_intr();
 	pvt->nic_ready = 0;
@@ -415,7 +415,7 @@ void nic_hw_shut(void)
 
 int nic_hw_tx_pkt(struct sk_buff *skb)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 	unsigned long flags;
 	int ret = -1;
 
@@ -438,7 +438,7 @@ int nic_hw_tx_pkt(struct sk_buff *skb)
 }
 struct sk_buff *nic_hw_rx_pkt(void)
 {
-	DrvPvt *pvt = netdev_priv(ndev);
+	DrvPvt *pvt = npvt;
 	unsigned long flags;
 	struct sk_buff *skb = NULL;
 

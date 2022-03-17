@@ -4,16 +4,16 @@
 #include <linux/pci.h>
 #include <linux/io.h>
 
-#define DRV_PREFIX "fpd"
+#define DRV_PREFIX "pd"
 #include "common.h"
+#include "network_driver.h"
 
-/* TODO: Change the following four defines as per your NIC */
-#define FPD_VENDOR_ID PCI_VENDOR_ID_REALTEK
-#define FPD_PRODUCT_ID 0x8136
-#define FPD_BAR_NO 2
+/* TODO: Change the following defines as per your NIC */
+#define PD_VENDOR_ID PCI_VENDOR_ID_REALTEK
+#define PD_PRODUCT_ID 0x8136
+#define PD_BAR_NO 2
 
-#define	MAC_ADDR_REG_START 0
-
+#if 0
 static void display_pci_config_space(struct pci_dev *dev)
 {
 	int i;
@@ -62,108 +62,106 @@ static void display_pci_config_space(struct pci_dev *dev)
 	pci_read_config_byte(dev, 62, &b); printk("%02X:", b);
 	pci_read_config_byte(dev, 63, &b); printk("%02X\n", b);
 }
+#endif
 
-void get_mac_addr(void __iomem *reg_base, unsigned char addr[6])
-{
-	int i;
-
-	for (i = 0; i < 6; i++)
-	{
-		addr[i] = ioread8(reg_base + MAC_ADDR_REG_START + i);
-	}
-}
-
-static int fpd_probe(struct pci_dev *dev, const struct pci_device_id *id)
+static int pd_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	void __iomem *reg_base;
 	int ret;
-	unsigned char mac[6];
 
 	ret = pci_enable_device(dev);
 	if (ret)
 	{
-		eprintk("Unable to enable this PCI device\n");
+		eprintk("Unable to enable this PCI Network device\n");
 		return ret;
 	}
 	else
 	{
-		iprintk("PCI device enabled\n");
+		iprintk("PCI Network device enabled\n");
 	}
 
-	display_pci_config_space(dev);
+	//display_pci_config_space(dev);
 
-	ret = pci_request_regions(dev, "fpd");
+	ret = pci_request_regions(dev, "pn");
 	if (ret)
 	{
-		eprintk("Unable to acquire regions of this PCI device\n");
+		eprintk("Unable to acquire regions of this PCI Network device\n");
 		pci_disable_device(dev);
 		return ret;
 	}
 	else
 	{
-		iprintk("PCI device regions acquired\n");
+		iprintk("PCI Network device regions acquired\n");
 	}
 
-	if ((reg_base = ioremap(pci_resource_start(dev, FPD_BAR_NO), pci_resource_len(dev, FPD_BAR_NO))) == NULL)
+	if ((reg_base = ioremap(pci_resource_start(dev, PD_BAR_NO), pci_resource_len(dev, PD_BAR_NO))) == NULL)
 	{
-		eprintk("Unable to map registers of this PCI device\n");
+		eprintk("Unable to map registers of this PCI Network device\n");
 		pci_release_regions(dev);
 		pci_disable_device(dev);
 		return -ENODEV;
 	}
 	iprintk("Register Base: %p\n", reg_base);
 
-	get_mac_addr(reg_base, mac);
-	iprintk("MAC: %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX\n",
-		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
 	iprintk("IRQ: %u\n", dev->irq);
 
 	pci_set_drvdata(dev, reg_base);
 
-	iprintk("PCI device registered\n");
+	ret = nd_init(dev);
+	if (ret)
+	{
+		eprintk("Unable to map registers of this PCI Network device\n");
+		iounmap(reg_base);
+		pci_release_regions(dev);
+		pci_disable_device(dev);
+		return ret;
+	}
+
+	iprintk("PCI Network device registered\n");
 
 	return 0;
 }
 
-static void fpd_remove(struct pci_dev *dev)
+static void pd_remove(struct pci_dev *dev)
 {
 	void __iomem *reg_base;
+
+	nd_exit(dev);
 
 	reg_base = pci_get_drvdata(dev);
 	pci_set_drvdata(dev, NULL);
 
 	iounmap(reg_base);
-	iprintk("PCI device memory unmapped\n");
+	iprintk("PCI Network device memory unmapped\n");
 
 	pci_release_regions(dev);
-	iprintk("PCI device regions released\n");
+	iprintk("PCI Network device regions released\n");
 
 	pci_disable_device(dev);
-	iprintk("PCI device disabled\n");
+	iprintk("PCI Network device disabled\n");
 
-	iprintk("PCI device unregistered\n");
+	iprintk("PCI Network device unregistered\n");
 }
 
 /* Table of devices that work with this driver */
-static struct pci_device_id fpd_table[] =
+static struct pci_device_id pd_table[] =
 {
 	{
-		PCI_DEVICE(FPD_VENDOR_ID, FPD_PRODUCT_ID)
+		PCI_DEVICE(PD_VENDOR_ID, PD_PRODUCT_ID)
 	},
 	{} /* Terminating entry */
 };
-MODULE_DEVICE_TABLE (pci, fpd_table);
+MODULE_DEVICE_TABLE (pci, pd_table);
 
 static struct pci_driver pci_drv =
 {
-	.name = "fpd",
-	.probe = fpd_probe,
-	.remove = fpd_remove,
-	.id_table = fpd_table,
+	.name = "pn",
+	.probe = pd_probe,
+	.remove = pd_remove,
+	.id_table = pd_table,
 };
 
-static int __init fpd_pci_init(void)
+static int __init pd_pci_init(void)
 {
 	int result;
 
@@ -172,20 +170,20 @@ static int __init fpd_pci_init(void)
 	{
 		eprintk("pci_register_driver failed. Error number %d\n", result);
 	}
-	iprintk("First PCI driver registered\n");
+	iprintk("PCI Network driver registered\n");
 	return result;
 }
 
-static void __exit fpd_pci_exit(void)
+static void __exit pd_pci_exit(void)
 {
 	/* Deregister this driver with the PCI subsystem */
 	pci_unregister_driver(&pci_drv);
-	iprintk("First PCI driver unregistered\n");
+	iprintk("PCI Network driver unregistered\n");
 }
 
-module_init(fpd_pci_init);
-module_exit(fpd_pci_exit);
+module_init(pd_pci_init);
+module_exit(pd_pci_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Anil Kumar Pugalia <anil@sysplay.in>");
-MODULE_DESCRIPTION("First PCI Device Driver");
+MODULE_DESCRIPTION("PCI Network Device Driver");

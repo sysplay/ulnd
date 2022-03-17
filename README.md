@@ -4,6 +4,7 @@ Experiments, Learning, Sharing done at SysPlay with Understanding Linux Network 
 Description of the various folders:
 
 + PNN_xxx: Directory containing the Problem Statement xxx, numbered NN, alongwith its related files
++ Apps: Directory containing some generic applications to play with networking
 
 Brief about the corresponding online training(s) conducted @ SysPlay (https://sysplay.in)
 

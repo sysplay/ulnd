@@ -1,4 +1,3 @@
-#include <linux/module.h>
 #include <linux/errno.h>
 
 #include <linux/netdevice.h> // struct net_device..., struct net_device_stats, ...
@@ -10,20 +9,12 @@
 #include <linux/tcp.h> // struct tcphdr, TCP definitions
 #include <linux/byteorder/generic.h> // ntoh...
 
-#define DRV_PREFIX "pnd"
+#define DRV_PREFIX "nd"
 #include "common.h"
 
 #include "nic.h"
 
-#define PND_NAPI_WEIGHT 64
-
-typedef struct _DrvPvt
-{
-	struct net_device *ndev;
-	struct napi_struct napi;
-} DrvPvt;
-
-static DrvPvt *npvt;
+#define ND_NAPI_WEIGHT 64
 
 static void display_packet(struct sk_buff *skb)
 {
@@ -119,7 +110,7 @@ static void handler(void *handler_param)
 	napi_schedule(&pvt->napi);
 }
 
-static int pnd_open(struct net_device *dev)
+static int nd_open(struct net_device *dev)
 {
 	DrvPvt *pvt = netdev_priv(dev);
 
@@ -130,7 +121,7 @@ static int pnd_open(struct net_device *dev)
 	nic_hw_init();
 	return 0;
 }
-static int pnd_close(struct net_device *dev)
+static int nd_close(struct net_device *dev)
 {
 	DrvPvt *pvt = netdev_priv(dev);
 
@@ -143,7 +134,7 @@ static int pnd_close(struct net_device *dev)
 	memset(&dev->stats, 0, sizeof(dev->stats));
 	return 0;
 }
-static int pnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static int nd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	int len;
 
@@ -162,21 +153,21 @@ static int pnd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 	return 0;
 }
-static int pnd_set_mac_address(struct net_device *dev, void *addr)
+static int nd_set_mac_address(struct net_device *dev, void *addr)
 {
 	iprintk("set_mac\n");
 	return eth_mac_addr(dev, addr);
 }
 
-static const struct net_device_ops pnd_netdev_ops =
+static const struct net_device_ops nd_netdev_ops =
 {
-	.ndo_open = pnd_open,
-	.ndo_stop = pnd_close,
-	.ndo_start_xmit = pnd_start_xmit,
-	.ndo_set_mac_address = pnd_set_mac_address,
+	.ndo_open = nd_open,
+	.ndo_stop = nd_close,
+	.ndo_start_xmit = nd_start_xmit,
+	.ndo_set_mac_address = nd_set_mac_address,
 };
 
-static int pnd_poll(struct napi_struct *napi_ptr, int budget)
+static int nd_poll(struct napi_struct *napi_ptr, int budget)
 {
 	DrvPvt *pvt = container_of(napi_ptr, DrvPvt, napi);
 	struct net_device *dev = pvt->ndev;
@@ -200,11 +191,11 @@ static int pnd_poll(struct napi_struct *napi_ptr, int budget)
 	return work_done;
 }
 
-static int pnd_init(void)
+int nd_init(struct pci_dev *pdev)
 {
 	struct net_device *dev;
 	DrvPvt *pvt;
-	int i, ret;
+	int ret;
 
 	iprintk("init\n");
 
@@ -216,13 +207,11 @@ static int pnd_init(void)
 	}
 	pvt = netdev_priv(dev);
 	pvt->ndev = dev;
-	netif_napi_add(dev, &pvt->napi, pnd_poll, PND_NAPI_WEIGHT);
-	// Setting up some MAC Addr - 00:01:02:03:04:05 to be specific
-	for (i = 0; i < dev->addr_len; i++)
-	{
-		dev->dev_addr[i] = i;
-	}
-	dev->netdev_ops = &pnd_netdev_ops;
+	netif_napi_add(dev, &pvt->napi, nd_poll, ND_NAPI_WEIGHT);
+	pvt->pdev = pdev;
+	pvt->reg_base = pci_get_drvdata(pdev);
+	nic_hw_get_mac_addr(pvt->reg_base, dev->dev_addr);
+	dev->netdev_ops = &nd_netdev_ops;
 	if ((ret = register_netdev(dev)))
 	{
 		eprintk("%s network interface registration failed w/ error %i\n", dev->name, ret);
@@ -230,24 +219,18 @@ static int pnd_init(void)
 	}
 	else
 	{
-		npvt = pvt; // Hack using global variable in absence of a horizontal layer
+		pci_set_drvdata(pdev, pvt);
 	}
 	return ret;
 }
-static void pnd_exit(void)
+void nd_exit(struct pci_dev *pdev)
 {
-	DrvPvt *pvt = npvt;
+	DrvPvt *pvt = pci_get_drvdata(pdev);
 	struct net_device *dev = pvt->ndev;
 
 	iprintk("exit\n");
+	pci_set_drvdata(pdev, pvt->reg_base);
 	unregister_netdev(dev);
 	netif_napi_del(&pvt->napi);
 	free_netdev(dev);
 }
-
-module_init(pnd_init);
-module_exit(pnd_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Anil Kumar Pugalia <anil@sysplay.in>");
-MODULE_DESCRIPTION("Packeted Network Device Driver");

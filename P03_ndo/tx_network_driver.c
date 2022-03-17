@@ -18,7 +18,7 @@ typedef struct _DrvPvt
 	struct net_device *ndev;
 } DrvPvt;
 
-static struct net_device *ndev;
+static DrvPvt *npvt;
 
 static void display_packet(struct sk_buff *skb)
 {
@@ -179,13 +179,13 @@ static int tnd_init(void)
 	}
 	pvt = netdev_priv(dev);
 	pvt->ndev = dev;
-	dev->netdev_ops = &tnd_netdev_ops;
 	//dev->watchdog_timeo = 6 * HZ; // Used for ndo_tx_timeout
 	// Setting up some MAC Addr - 00:01:02:03:04:05 to be specific
 	for (i = 0; i < dev->addr_len; i++)
 	{
 		dev->dev_addr[i] = i;
 	}
+	dev->netdev_ops = &tnd_netdev_ops;
 	if ((ret = register_netdev(dev)))
 	{
 		eprintk("%s network interface registration failed w/ error %i\n", dev->name, ret);
@@ -193,13 +193,14 @@ static int tnd_init(void)
 	}
 	else
 	{
-		ndev = dev; // Hack using global variable in absence of a horizontal layer
+		npvt = pvt; // Hack using global variable in absence of a horizontal layer
 	}
 	return ret;
 }
 static void tnd_exit(void)
 {
-	struct net_device *dev = ndev;
+	DrvPvt *pvt = npvt;
+	struct net_device *dev = pvt->ndev;
 
 	iprintk("exit\n");
 	unregister_netdev(dev);
