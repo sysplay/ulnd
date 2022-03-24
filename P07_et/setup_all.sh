@@ -1,0 +1,1 @@
+../P04_vnic/setup_all.sh
