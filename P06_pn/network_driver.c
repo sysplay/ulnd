@@ -106,7 +106,7 @@ static void handler(void *handler_param)
 {
 	DrvPvt *pvt = (DrvPvt *)(handler_param);
 
-	nic_hw_disable_intr();
+	nic_hw_disable_intr(pvt->reg_base);
 	napi_schedule(&pvt->napi);
 }
 
@@ -115,10 +115,10 @@ static int nd_open(struct net_device *dev)
 	DrvPvt *pvt = netdev_priv(dev);
 
 	iprintk("open\n");
-	nic_setup_buffers();
+	nic_setup_buffers(pvt);
 	napi_enable(&pvt->napi);
-	nic_register_handler(handler, pvt);
-	nic_hw_init();
+	nic_register_handler(pvt, handler);
+	nic_hw_init(pvt);
 	return 0;
 }
 static int nd_close(struct net_device *dev)
@@ -126,10 +126,10 @@ static int nd_close(struct net_device *dev)
 	DrvPvt *pvt = netdev_priv(dev);
 
 	iprintk("close\n");
-	nic_hw_shut();
-	nic_unregister_handler();
+	nic_hw_shut(pvt);
+	nic_unregister_handler(pvt);
 	napi_disable(&pvt->napi);
-	nic_cleanup_buffers(); // In turn, also clears the pkts, if any
+	nic_cleanup_buffers(pvt); // In turn, also clears the pkts, if any
 	// Clear the stats
 	memset(&dev->stats, 0, sizeof(dev->stats));
 	return 0;
@@ -137,11 +137,12 @@ static int nd_close(struct net_device *dev)
 static int nd_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	int len;
+	DrvPvt *pvt = netdev_priv(dev);
 
 	iprintk("tx\n");
 	display_packet(skb);
 	len = skb->len; // HACK: To avoid using skb after packet transmission
-	if (nic_hw_tx_pkt(skb)) // Buffer Full & hence dropped
+	if (nic_hw_tx_pkt(pvt, skb)) // Buffer Full & hence dropped
 	{
 		dev->stats.tx_dropped++;
 		dev_kfree_skb(skb);
@@ -176,7 +177,7 @@ static int nd_poll(struct napi_struct *napi_ptr, int budget)
 
 	iprintk("poll\n");
 	work_done = 0;
-	while ((work_done < budget) && (skb = nic_hw_rx_pkt()))
+	while ((work_done < budget) && (skb = nic_hw_rx_pkt(pvt)))
 	{
 		display_packet(skb);
 		dev->stats.rx_packets++;
@@ -186,7 +187,7 @@ static int nd_poll(struct napi_struct *napi_ptr, int budget)
 	}
 	if (work_done < budget) {
 		napi_complete(napi_ptr);
-		nic_hw_enable_intr();
+		nic_hw_enable_intr(pvt->reg_base);
 	}
 	return work_done;
 }

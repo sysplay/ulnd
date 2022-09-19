@@ -29,20 +29,20 @@ typedef struct _DrvPvt
 
 /* Following are the function prototypes for NIC related implementation */
 /* TODO: Modify as per the modifications in nic.c */
-void nic_setup_buffers(void);
-void nic_cleanup_buffers(void);
-void nic_register_handler(Handler handler, void *handler_param);
-void nic_unregister_handler(void);
+void nic_setup_buffers(DrvPvt *pvt);
+void nic_cleanup_buffers(DrvPvt *pvt);
+void nic_register_handler(DrvPvt *pvt, Handler handler);
+void nic_unregister_handler(DrvPvt *pvt);
 
 void nic_hw_get_mac_addr(void __iomem *reg_base, unsigned char addr[6]);
+void nic_hw_enable_intr(void __iomem *reg_base);
+void nic_hw_disable_intr(void __iomem *reg_base);
 
-void nic_hw_enable_intr(void);
-void nic_hw_disable_intr(void);
-void nic_hw_init(void); // Should be called after everything is set up
-void nic_hw_shut(void); // Should be called before anything is cleaned up
+void nic_hw_init(DrvPvt *pvt); // Should be called after everything is set up
+void nic_hw_shut(DrvPvt *pvt); // Should be called before anything is cleaned up
 
-int nic_hw_tx_pkt(struct sk_buff *skb);
-struct sk_buff *nic_hw_rx_pkt(void);
+int nic_hw_tx_pkt(DrvPvt *pvt, struct sk_buff *skb);
+struct sk_buff *nic_hw_rx_pkt(DrvPvt *pvt);
 
 #endif
 
